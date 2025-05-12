@@ -1,0 +1,1 @@
+ compare the performance of two different convolutional neural network (CNN) architectures on an image classification task using a dataset more complex than MNIST. I want to challenge myself with a more realistic computer vision problem that better reflects current deep learning applications.
