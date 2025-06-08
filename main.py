@@ -1,16 +1,20 @@
 import os
 import numpy as np
 import tensorflow as tf
+import matplotlib.pyplot as plt
 
 #author Vladyslav Glavatskyi
 
-#import custom modules from python modules
+# import custom modules from python modules
 from dataLoader import load_and_prepare_cifar10, display_sample_images
-from model import create_traditional_cnn, create_resnet, count_parameters
+from model import create_traditional_cnn, create_resnet, create_mobilenet, count_parameters
 from Trainning import train_model, evaluate_model
 from Visualizer import (
-    plot_training_history, plot_confusion_matrices, plot_model_comparison,
-    visualize_feature_maps, plot_misclassified_examples
+    generate_all_visualizations,  #main comprehensive function
+    plot_training_history,        #individual comparisons if needed
+    plot_confusion_matrices,      #specific model comparisons
+    visualize_feature_maps,       #individual feature map analysis
+    plot_misclassified_examples   #individual model error analysis
 )
 
 #set random seed for reproducibility
@@ -18,145 +22,156 @@ np.random.seed(42)
 tf.random.set_seed(42)
 
 def main():
+    print("Starting main function...")
+
     #create output directory for results
     os.makedirs('results', exist_ok=True)
 
-    #set training parameters
-    epochs = 15  #number of epochs for training
-    patience = 5 #patience for early stopping
+    #training parameters
+    epochs = 30  #number of epoch
+    patience = 8  #patience for convergence
 
-    #loadCIFAR-10 dataset
+    #load CIFAR-10 dataset
     print("Loading CIFAR-10 dataset...")
     train_generator, val_generator, test_generator, class_names, x_test, y_test = load_and_prepare_cifar10(
-        batch_size=256)
+        batch_size=64)
 
-    #use subset of the test data
-    x_test_small = x_test[:1500]  #use only 1500 test images
-    y_test_small = y_test[:1500]  #use only 1500 test labels
+    #use subset of test data
+    x_test_small = x_test[:2000]
+    y_test_small = y_test[:2000]
+
     #display sample images
     display_sample_images(x_test[:10], y_test[:10], class_names)
 
-    #enable mixed precision training
-    try:
-        policy = tf.keras.mixed_precision.Policy('mixed_float16')
-        tf.keras.mixed_precision.set_global_policy(policy)
-        print("Mixed precision training enabled")
-    except:
-        print("Mixed precision training not available")
+    print("Using standard precision training")
 
     #create models
     print("Creating models...")
     traditional_cnn = create_traditional_cnn()
     resnet_model = create_resnet()
+    mobilenet_model = create_mobilenet()
 
-    #count parameters
-    trad_params = count_parameters(traditional_cnn)
-    resnet_params = count_parameters(resnet_model)
+    #Dictionary to store all models
+    models = {
+        'Traditional CNN': traditional_cnn,
+        'ResNet': resnet_model,
+        'MobileNet-Inspired': mobilenet_model
+    }
 
-    print(f"Traditional CNN parameters: {trad_params:,}")
-    print(f"ResNet parameters: {resnet_params:,}")
+    #count parameters for all models
+    print("\nModel Parameters:")
+    for name, model in models.items():
+        params = count_parameters(model)
+        print(f"{name} parameters: {params:,}")
 
-    #train models
-    print("\nTraining Traditional CNN...")
-    trad_model, trad_history, trad_time = train_model(
-        traditional_cnn, train_generator, val_generator,
-        epochs=epochs, model_name="traditional_cnn", patience=patience
-    )
+    #storage for results
+    trained_models = {}
+    histories = {}
+    training_times = {}
+    evaluation_results = {}
 
-    print(f"\nTraditional CNN training completed in {trad_time:.2f} seconds")
+    #train all models
+    for name, model in models.items():
+        print(f"\n{'='*60}")
+        print(f"Training {name}...")
+        print(f"{'='*60}")
 
-    print("\nTraining ResNet...")
-    resnet_model, resnet_history, resnet_time = train_model(
-        resnet_model, train_generator, val_generator,
-        epochs=epochs, model_name="resnet", patience=patience
-    )
-
-    print(f"\nResNet training completed in {resnet_time:.2f} seconds")
-
-    #check models
-    print("\nEvaluating Traditional CNN...")
-    trad_results = evaluate_model(trad_model, test_generator, class_names, x_test_small, y_test_small)
-
-    print("\nEvaluating ResNet...")
-    resnet_results = evaluate_model(resnet_model, test_generator, class_names, x_test_small, y_test_small)
-
-    #print report
-    print("\nTraditional CNN Classification Report:")
-    print(trad_results['classification_report'])
-
-    print("\nResNet Classification Report:")
-    print(resnet_results['classification_report'])
-
-    #visualize results
-    print("\nGenerating visualizations...")
-
-    #plot training history
-    try:
-        plot_training_history(trad_history, resnet_history)
-    except Exception as e:
-        print(f"Error plotting training history: {e}")
-
-    #plot confusion matrices
-    try:
-        plot_confusion_matrices(
-            trad_results['confusion_matrix'],
-            resnet_results['confusion_matrix'],
-            class_names
-        )
-    except Exception as e:
-        print(f"Error plotting confusion matrices: {e}")
-
-    #plot model comparison
-    try:
-        plot_model_comparison(
-            trad_results, resnet_results,
-            trad_time, resnet_time,
-            trad_params, resnet_params
-        )
-    except Exception as e:
-        print(f"Error plotting model comparison: {e}")
-
-    #visualize feature maps for sample image
-    sample_idx = np.random.randint(0, len(x_test))
-    sample_image = x_test[sample_idx]
-    true_label = np.argmax(y_test[sample_idx])
-
-    #get valid layer name for feature map visualization
-    try:
-        #traditional CNN
-        trad_conv_layers = [layer.name for layer in traditional_cnn.layers if 'conv' in layer.name]
-        if trad_conv_layers:
-            trad_layer_name = trad_conv_layers[1]  #use second conv layer
-            visualize_feature_maps(
-                trad_model, sample_image, trad_layer_name, class_names, true_label
+        try:
+            trained_model, history, training_time = train_model(
+                model, train_generator, val_generator,
+                epochs=epochs, model_name=name.lower().replace(' ', '_').replace('-', '_'),
+                patience=patience
             )
 
-        #ResNet
-        resnet_conv_layers = [layer.name for layer in resnet_model.layers if 'conv' in layer.name]
-        if resnet_conv_layers:
-            resnet_layer_name = resnet_conv_layers[2]  # Use the third conv layer
-            visualize_feature_maps(
-                resnet_model, sample_image, resnet_layer_name, class_names, true_label
-            )
-    except Exception as e:
-        print(f"Error visualizing feature maps: {e}")
+            #store results
+            trained_models[name] = trained_model
+            histories[name] = history
+            training_times[name] = training_time
 
-    #plot misclassified examples
+        except Exception as e:
+            print(f"Error training {name}: {e}")
+            continue
+
+    #evaluate all models
+    print("\n" + "="*60)
+    print("EVALUATING ALL MODELS")
+    print("="*60)
+
+    for name, model in trained_models.items():
+        try:
+            print(f"\nEvaluating {name}...")
+            results = evaluate_model(model, test_generator, class_names, x_test_small, y_test_small)
+            evaluation_results[name] = results
+
+            print(f"\n{name} Results:")
+            print(f"Accuracy: {results['accuracy']:.4f}")
+            print(f"Precision: {results['precision']:.4f}")
+            print(f"Recall: {results['recall']:.4f}")
+            print(f"F1-Score: {results['f1']:.4f}")
+
+        except Exception as e:
+            print(f"Error evaluating {name}: {e}")
+            continue
+
+    #print summary comparison
+    print("\n" + "=" * 80)
+    print("FINAL RESULTS SUMMARY")
+    print("=" * 80)
+
+    if evaluation_results:
+        print(f"{'Model':<25} {'Accuracy':<10} {'Precision':<10} {'Recall':<10} {'F1-Score':<10} {'Time(s)':<10} {'Params':<12}")
+        print("-" * 95)
+
+        for name in models.keys():
+            if name in evaluation_results and name in training_times:
+                results = evaluation_results[name]
+                params = count_parameters(models[name])
+                print(f"{name:<25} {results['accuracy']:<10.4f} {results['precision']:<10.4f} "
+                      f"{results['recall']:<10.4f} {results['f1']:<10.4f} {training_times[name]:<10.1f} {params / 1000000:<12.2f}M")
+
+        #find best model
+        best_model = max(evaluation_results.keys(), key=lambda x: evaluation_results[x]['accuracy'])
+        best_accuracy = evaluation_results[best_model]['accuracy']
+        print(f"\nBest performing model: {best_model}")
+        print(f"Best accuracy: {best_accuracy:.4f}")
+    else:
+        print("No models were successfully trained and evaluated.")
+
+    #generate all visualizations using comprehensive function
+    print("\nGenerating comprehensive visualizations...")
+
     try:
-        plot_misclassified_examples(
-            x_test, trad_results['y_true'], trad_results['y_pred'],
-            class_names, 'traditional_cnn'
-        )
-
-        plot_misclassified_examples(
-            x_test, resnet_results['y_true'], resnet_results['y_pred'],
-            class_names, 'resnet'
+        generate_all_visualizations(
+            evaluation_results, histories, training_times,
+            models, class_names, x_test, y_test
         )
     except Exception as e:
-        print(f"Error plotting misclassified examples: {e}")
+        print(f"Error generating visualizations: {e}")
+
+        #fallback-try individual visualizations
+        print("Attempting individual visualizations...")
+
+        try:
+            #training history comparison
+            if len(histories) >= 2:
+                model_names = list(histories.keys())
+                plot_training_history(histories[model_names[0]], histories[model_names[1]])
+        except Exception as e2:
+            print(f"Error with training history: {e2}")
+
+        try:
+            #confusion matrices
+            if len(evaluation_results) >= 2:
+                model_names = list(evaluation_results.keys())
+                plot_confusion_matrices(
+                    evaluation_results[model_names[0]]['confusion_matrix'],
+                    evaluation_results[model_names[1]]['confusion_matrix'],
+                    class_names, model_names[0], model_names[1]
+                )
+        except Exception as e3:
+            print(f"Error with confusion matrices: {e3}")
 
     print("\nExperiment completed successfully!")
-
 
 if __name__ == "__main__":
     main()

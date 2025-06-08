@@ -3,8 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-def load_and_prepare_cifar10(batch_size=128):
-    #load CIFAR-10 dataset
+def load_and_prepare_cifar10(batch_size=32):
+    #Load CIFAR-10 dataset
     (x_train, y_train), (x_test, y_test) = tf.keras.datasets.cifar10.load_data()
 
     #normalize pixel values to be between 0 and 1
@@ -16,12 +16,16 @@ def load_and_prepare_cifar10(batch_size=128):
     y_train = tf.keras.utils.to_categorical(y_train, num_classes)
     y_test = tf.keras.utils.to_categorical(y_test, num_classes)
 
-    #create a validation set (20% of training data)
+    #create validation set (20% of training data)
     val_size = int(0.2 * len(x_train))
     x_val = x_train[-val_size:]
     y_val = y_train[-val_size:]
     x_train = x_train[:-val_size]
     y_train = y_train[:-val_size]
+
+    print(f"Training samples: {len(x_train)}")
+    print(f"Validation samples: {len(x_val)}")
+    print(f"Test samples: {len(x_test)}")
 
     #create tf.data.Dataset objects
     train_ds = tf.data.Dataset.from_tensor_slices((x_train, y_train))
@@ -30,15 +34,14 @@ def load_and_prepare_cifar10(batch_size=128):
 
     #data augmentation function
     def augment(image, label):
-        #random flip
+        #random horizontal flip
         image = tf.image.random_flip_left_right(image)
-        #random rotation (convert to degrees then back to radians)
-        image = tf.image.rot90(image, tf.random.uniform(shape=[], minval=0, maxval=4, dtype=tf.int32))
-        #random brightness
-        image = tf.image.random_brightness(image, 0.2)
-        #random contrast
-        image = tf.image.random_contrast(image, 0.8, 1.2)
-        #makessure image stays in [0,1]
+
+        #mild brightness and contrast adjustments
+        image = tf.image.random_brightness(image, 0.1)
+        image = tf.image.random_contrast(image, 0.9, 1.1)
+
+        #ensure image stays in [0,1]
         image = tf.clip_by_value(image, 0.0, 1.0)
         return image, label
 
